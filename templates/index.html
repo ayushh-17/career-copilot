@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Career Copilot - Resume Matcher</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Career Copilot</h1>
+            <p>AI-Powered Resume & Job Matching</p>
+            <div class="nav-buttons">
+                <button onclick="showPage('analyzer')" class="nav-btn active">Analyzer</button>
+                <button onclick="showPage('portfolio')" class="nav-btn">📊 Portfolio</button>
+            </div>
+        </div>
+
+        <div class="content">
+            <!-- Analyzer Page -->
+            <div id="analyzer-page" class="page">
+                <form id="matchForm" class="form-container">
+                    <!-- Job Info Section -->
+                    <div class="form-row">
+                        <div class="form-section">
+                            <label for="jobTitle" class="section-title">💼 Job Title</label>
+                            <input type="text" id="jobTitle" name="job_title" placeholder="e.g., Senior Full Stack Developer" required>
+                        </div>
+                        <div class="form-section">
+                            <label for="company" class="section-title">🏢 Company</label>
+                            <input type="text" id="company" name="company" placeholder="e.g., Tech Startup India" required>
+                        </div>
+                    </div>
+
+                    <!-- Resume Upload Section -->
+                    <div class="form-section">
+                        <label class="section-title">📄 Your Resume</label>
+                        <div class="file-upload">
+                            <input type="file" id="resumeFile" name="resume" accept=".pdf,.docx,.doc,.txt" required>
+                            <label for="resumeFile" class="file-label">
+                                <span class="upload-icon">📤</span>
+                                <span>Click to upload or drag & drop</span>
+                                <span class="file-hint">(PDF, DOCX, DOC, TXT - Max 16MB)</span>
+                            </label>
+                        </div>
+                        <div id="fileName" class="file-name"></div>
+                    </div>
+
+                    <!-- Job Description Section -->
+                    <div class="form-section">
+                        <label for="jobDescription" class="section-title">💼 Job Description</label>
+                        <textarea 
+                            id="jobDescription" 
+                            name="job_description" 
+                            placeholder="Paste the job description here... (Skills, experience, requirements, etc.)"
+                            required
+                        ></textarea>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button type="submit" class="btn-analyze" id="analyzeBtn">
+                        <span>✨ Analyze & Match</span>
+                    </button>
+                </form>
+
+                <!-- Loading State -->
+                <div id="loading" class="loading hidden">
+                    <div class="spinner"></div>
+                    <p>Analyzing your resume... ✨</p>
+                </div>
+
+                <!-- Results Section -->
+                <div id="results" class="results-container hidden">
+                    <div class="results-header">
+                        <h2>📊 Analysis Results</h2>
+                        <div class="results-actions">
+                            <button onclick="exportPDF()" class="btn-export">📥 Export PDF</button>
+                            <button onclick="resetForm()" class="btn-new">← New Analysis</button>
+                        </div>
+                    </div>
+
+                    <!-- Match Score Card -->
+                    <div class="score-card">
+                        <div class="score-display">
+                            <svg viewBox="0 0 100 100" class="score-circle">
+                                <circle cx="50" cy="50" r="45" fill="none" stroke="#e5e7eb" stroke-width="8"/>
+                                <circle id="scoreCircle" cx="50" cy="50" r="45" fill="none" stroke="#60a5fa" stroke-width="8" stroke-dasharray="141.3" stroke-dashoffset="141.3"/>
+                            </svg>
+                            <div class="score-text">
+                                <span id="scoreValue" class="score-number">0</span>
+                                <span class="score-label">% Match</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Analysis Tabs -->
+                    <div class="tabs">
+                        <button onclick="switchTab('analysis')" class="tab-btn active">📋 Analysis</button>
+                        <button onclick="switchTab('suggestions')" class="tab-btn">🎯 Next Steps</button>
+                    </div>
+
+                    <div id="analysis-tab" class="tab-content">
+                        <div id="analysisOutput" class="analysis-output"></div>
+                    </div>
+
+                    <div id="suggestions-tab" class="tab-content hidden">
+                        <div id="suggestionsOutput" class="analysis-output"></div>
+                    </div>
+                </div>
+
+                <!-- Error State -->
+                <div id="error" class="error-container hidden">
+                    <p id="errorMessage"></p>
+                    <div id="waitTimer" class="wait-timer hidden">
+                        <p>Waiting... <span id="countdownValue">30</span>s</p>
+                    </div>
+                    <button onclick="resetForm()" class="btn-retry">← Try Again</button>
+                </div>
+            </div>
+
+            <!-- Portfolio Page -->
+            <div id="portfolio-page" class="page hidden">
+                <div class="portfolio-header">
+                    <h2>📊 Your Analysis History</h2>
+                    <button onclick="loadPortfolio()" class="btn-refresh">🔄 Refresh</button>
+                </div>
+                <div id="portfolio-list" class="portfolio-list"></div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>🔒 Privacy: Your resume is analyzed and immediately deleted. Never stored.</p>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('matchForm');
+        const resumeInput = document.getElementById('resumeFile');
+        const jobDescInput = document.getElementById('jobDescription');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const loading = document.getElementById('loading');
+        const results = document.getElementById('results');
+        const error = document.getElementById('error');
+        const analysisOutput = document.getElementById('analysisOutput');
+        const suggestionsOutput = document.getElementById('suggestionsOutput');
+        const fileNameDisplay = document.getElementById('fileName');
+        let currentAnalysisId = null;
+
+        // Page Navigation
+        function showPage(page) {
+            document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+            document.getElementById(page + '-page').classList.remove('hidden');
+            
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            if (page === 'portfolio') {
+                loadPortfolio();
+            }
+        }
+
+        // Tab Switching
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden'));
+            document.getElementById(tab + '-tab').classList.remove('hidden');
+            
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        // Load Portfolio
+        async function loadPortfolio() {
+            try {
+                const response = await fetch('/portfolio');
+                const data = await response.json();
+                
+                const portfolioList = document.getElementById('portfolio-list');
+                
+                if (!data.analyses || data.analyses.length === 0) {
+                    portfolioList.innerHTML = '<p style="text-align:center; color:#7d8b99;">No analyses yet. Start analyzing!</p>';
+                    return;
+                }
+                
+                portfolioList.innerHTML = data.analyses.map(analysis => `
+                    <div class="portfolio-item">
+                        <div class="portfolio-header-item">
+                            <div>
+                                <h3>${analysis.job_title}</h3>
+                                <p>${analysis.company} • ${analysis.resume_name}</p>
+                                <p class="date">${new Date(analysis.created_at).toLocaleDateString()}</p>
+                            </div>
+                            <div class="score-badge">${analysis.match_score}%</div>
+                        </div>
+                        <div class="portfolio-actions">
+                            <button onclick="viewAnalysis(${analysis.id})" class="btn-small">👁️ View</button>
+                            <button onclick="downloadPDF(${analysis.id})" class="btn-small">📥 PDF</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error('Portfolio load error:', err);
+            }
+        }
+
+        // View Analysis
+        async function viewAnalysis(analysisId) {
+            try {
+                const response = await fetch(`/analysis/${analysisId}`);
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    const analysis = data.analysis;
+                    
+                    // Switch to analyzer page and show results
+                    document.getElementById('analyzer-page').classList.remove('hidden');
+                    document.getElementById('portfolio-page').classList.add('hidden');
+                    
+                    currentAnalysisId = analysis.id;
+                    
+                    // Display score
+                    displayScore(analysis.match_score);
+                    
+                    // Display analysis and suggestions
+                    analysisOutput.innerHTML = `<div class="markdown-content">${marked.parse(analysis.analysis_text)}</div>`;
+                    suggestionsOutput.innerHTML = `<div class="markdown-content">${marked.parse(analysis.suggestions_text)}</div>`;
+                    
+                    results.classList.remove('hidden');
+                    form.classList.add('hidden');
+                    results.scrollIntoView({ behavior: 'smooth' });
+                }
+            } catch (err) {
+                alert('Error loading analysis: ' + err.message);
+            }
+        }
+
+        // Download PDF
+        function downloadPDF(analysisId) {
+            window.location.href = `/export-pdf/${analysisId}`;
+        }
+
+        // Export Current Analysis
+        function exportPDF() {
+            if (currentAnalysisId) {
+                downloadPDF(currentAnalysisId);
+            }
+        }
+
+        // Display Score with Animation
+        function displayScore(score) {
+            document.getElementById('scoreValue').textContent = score;
+            const scoreCircle = document.getElementById('scoreCircle');
+            const circumference = 2 * Math.PI * 45;
+            const offset = circumference - (score / 100) * circumference;
+            
+            scoreCircle.style.transition = 'stroke-dashoffset 1s ease-in-out';
+            scoreCircle.style.strokeDashoffset = offset;
+        }
+
+        // File name display
+        resumeInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                fileNameDisplay.textContent = `✓ ${e.target.files[0].name}`;
+                fileNameDisplay.style.color = '#4ade80';
+            }
+        });
+
+        // Drag & Drop
+        const fileLabel = document.querySelector('.file-label');
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            fileLabel.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        fileLabel.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            resumeInput.files = files;
+            fileNameDisplay.textContent = `✓ ${files[0].name}`;
+            fileNameDisplay.style.color = '#4ade80';
+        });
+
+        // Form Submit
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (!resumeInput.files.length) {
+                showError('Please upload a resume');
+                return;
+            }
+
+            if (!jobDescInput.value.trim()) {
+                showError('Please enter a job description');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('resume', resumeInput.files[0]);
+            formData.append('job_description', jobDescInput.value);
+            formData.append('job_title', document.getElementById('jobTitle').value);
+            formData.append('company', document.getElementById('company').value);
+
+            hideAll();
+            showLoading();
+
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    currentAnalysisId = data.analysis_id;
+                    displayScore(data.match_score);
+                    analysisOutput.innerHTML = `<div class="markdown-content">${marked.parse(data.analysis)}</div>`;
+                    suggestionsOutput.innerHTML = `<div class="markdown-content">${marked.parse(data.suggestions)}</div>`;
+                    displayResults();
+                } else {
+                    if (response.status === 429 && data.wait_seconds) {
+                        showError(data.message, data.wait_seconds);
+                    } else {
+                        showError(data.message || 'Analysis failed');
+                    }
+                }
+            } catch (err) {
+                showError('Network error: ' + err.message);
+            }
+        });
+
+        function displayResults() {
+            hideAll();
+            results.classList.remove('hidden');
+            results.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function showError(message, waitSeconds = 0) {
+            hideAll();
+            document.getElementById('errorMessage').textContent = message;
+            error.classList.remove('hidden');
+            
+            if (waitSeconds > 0) {
+                document.getElementById('waitTimer').classList.remove('hidden');
+                document.getElementById('analyzeBtn').disabled = true;
+                
+                let remaining = waitSeconds;
+                const timer = setInterval(() => {
+                    document.getElementById('countdownValue').textContent = remaining;
+                    remaining--;
+                    
+                    if (remaining < 0) {
+                        clearInterval(timer);
+                        document.getElementById('waitTimer').classList.add('hidden');
+                        document.getElementById('analyzeBtn').disabled = false;
+                    }
+                }, 1000);
+            }
+        }
+
+        function showLoading() {
+            loading.classList.remove('hidden');
+        }
+
+        function hideAll() {
+            form.classList.add('hidden');
+            loading.classList.add('hidden');
+            results.classList.add('hidden');
+            error.classList.add('hidden');
+        }
+
+        function resetForm() {
+            form.classList.remove('hidden');
+            results.classList.add('hidden');
+            error.classList.add('hidden');
+            form.reset();
+            fileNameDisplay.textContent = '';
+            form.scrollIntoView({ behavior: 'smooth' });
+        }
+    </script>
+
+    <!-- Markdown Parser for formatted output -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</body>
+</html>
